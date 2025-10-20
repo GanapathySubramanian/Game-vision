@@ -1,0 +1,180 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Video Management API",
+    "description": "API for handling video upload, storage, and inventory management",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/upload-video": {
+      "post": {
+        "summary": "Generate presigned URL for video upload",
+        "description": "Creates a presigned S3 URL for direct video upload from the frontend",
+        "operationId": "uploadVideo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileName": {
+                    "type": "string",
+                    "description": "Name of the video file to upload"
+                  },
+                  "contentType": {
+                    "type": "string",
+                    "description": "MIME type of the video file",
+                    "default": "video/mp4"
+                  }
+                },
+                "required": ["fileName"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Presigned URL generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "uploadUrl": {
+                      "type": "string",
+                      "description": "Presigned URL for uploading the video"
+                    },
+                    "s3Uri": {
+                      "type": "string",
+                      "description": "S3 URI where the video will be stored"
+                    },
+                    "videoId": {
+                      "type": "string",
+                      "description": "Unique identifier for the video"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/list-videos": {
+      "get": {
+        "summary": "List analyzed videos",
+        "description": "Retrieve a list of all uploaded and analyzed videos",
+        "operationId": "listVideos",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of videos to return",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filter by analysis status",
+            "schema": {
+              "type": "string",
+              "enum": ["uploaded", "processing", "completed", "failed"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of videos retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videos": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "videoId": {
+                            "type": "string"
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "s3Uri": {
+                            "type": "string"
+                          },
+                          "uploadTime": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "analysisResults": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/video-status": {
+      "get": {
+        "summary": "Get video processing status",
+        "description": "Check the current status of video analysis",
+        "operationId": "getVideoStatus",
+        "parameters": [
+          {
+            "name": "videoId",
+            "in": "query",
+            "required": true,
+            "description": "Unique identifier of the video",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Video status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["uploaded", "processing", "completed", "failed"]
+                    },
+                    "progress": {
+                      "type": "integer",
+                      "description": "Processing progress percentage"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Status message or error details"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

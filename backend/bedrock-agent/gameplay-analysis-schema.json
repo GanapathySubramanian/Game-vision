@@ -1,0 +1,256 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Gameplay Analysis API",
+    "description": "API for processing videos with AI analysis and generating insights",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/analyze-video": {
+      "post": {
+        "summary": "Analyze gameplay video",
+        "description": "Process a video using Bedrock Data Automation to extract gameplay insights",
+        "operationId": "analyzeVideo",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "videoId": {
+                    "type": "string",
+                    "description": "Unique identifier of the video to analyze"
+                  },
+                  "s3Uri": {
+                    "type": "string",
+                    "description": "S3 URI of the video file"
+                  },
+                  "projectArn": {
+                    "type": "string",
+                    "description": "Optional Bedrock Data Automation project ARN for custom analysis"
+                  },
+                  "analysisType": {
+                    "type": "string",
+                    "enum": ["standard", "custom", "both"],
+                    "default": "both",
+                    "description": "Type of analysis to perform"
+                  }
+                },
+                "required": ["videoId", "s3Uri"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Analysis started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "analysisId": {
+                      "type": "string",
+                      "description": "Unique identifier for the analysis job"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["started", "processing"]
+                    },
+                    "estimatedCompletionTime": {
+                      "type": "string",
+                      "description": "Estimated completion time in minutes"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/generate-highlights": {
+      "post": {
+        "summary": "Generate video highlights",
+        "description": "Create AI-powered highlights and key moments from analyzed video",
+        "operationId": "generateHighlights",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "videoId": {
+                    "type": "string",
+                    "description": "Unique identifier of the analyzed video"
+                  },
+                  "highlightType": {
+                    "type": "string",
+                    "enum": ["goals", "saves", "penalties", "key_moments", "all"],
+                    "default": "all",
+                    "description": "Type of highlights to generate"
+                  },
+                  "maxHighlights": {
+                    "type": "integer",
+                    "default": 10,
+                    "description": "Maximum number of highlights to generate"
+                  },
+                  "minDuration": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "Minimum duration of each highlight in seconds"
+                  }
+                },
+                "required": ["videoId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Highlights generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "highlights": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "startTime": {
+                            "type": "string",
+                            "description": "Start timestamp in SMPTE format"
+                          },
+                          "endTime": {
+                            "type": "string",
+                            "description": "End timestamp in SMPTE format"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "confidence": {
+                            "type": "number",
+                            "description": "Confidence score for the highlight"
+                          },
+                          "players": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "summary": {
+                      "type": "string",
+                      "description": "Overall summary of the video content"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-analysis-results": {
+      "get": {
+        "summary": "Get analysis results",
+        "description": "Retrieve the complete analysis results for a video",
+        "operationId": "getAnalysisResults",
+        "parameters": [
+          {
+            "name": "videoId",
+            "in": "query",
+            "required": true,
+            "description": "Unique identifier of the video",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeRawData",
+            "in": "query",
+            "description": "Include raw analysis data in response",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Analysis results retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "analysisStatus": {
+                      "type": "string",
+                      "enum": ["completed", "processing", "failed"]
+                    },
+                    "standardOutput": {
+                      "type": "object",
+                      "description": "Standard analysis results from Bedrock Data Automation"
+                    },
+                    "customOutput": {
+                      "type": "object",
+                      "description": "Custom sports-specific analysis results"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "duration": {
+                          "type": "string"
+                        },
+                        "resolution": {
+                          "type": "string"
+                        },
+                        "frameRate": {
+                          "type": "number"
+                        },
+                        "sport": {
+                          "type": "string"
+                        },
+                        "teams": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "processingTime": {
+                      "type": "string",
+                      "description": "Total processing time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

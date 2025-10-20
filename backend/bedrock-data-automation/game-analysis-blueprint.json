@@ -1,0 +1,256 @@
+{
+  "blueprintName": "game_video_analysis",
+  "description": "Universal game video analysis supporting multiple sports - detects player actions, game events, scoring, violations, and crowd reactions",
+  "version": "1.0",
+  "inputConfiguration": {
+    "videoInput": {
+      "supportedFormats": ["mp4", "mov", "avi", "mkv"],
+      "maxDuration": 7200,
+      "minResolution": "720p"
+    },
+    "audioInput": {
+      "extractAudio": true,
+      "supportedFormats": ["aac", "mp3", "wav"]
+    }
+  },
+  "analysisConfiguration": {
+    "temporalSegmentation": {
+      "enableChapterDetection": true,
+      "minChapterDuration": 5,
+      "maxChapterDuration": 300,
+      "segmentationMethod": "scene_change_detection"
+    },
+    "multiModalAnalysis": {
+      "enableVideoAnalysis": true,
+      "enableAudioAnalysis": true,
+      "enableTextExtraction": true,
+      "frameAnalysisInterval": 1
+    }
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "matched_blueprint": {
+        "type": "object",
+        "properties": {
+          "arn": {"type": "string"},
+          "name": {"type": "string"},
+          "confidence": {"type": "number"}
+        }
+      },
+      "split_video": {
+        "type": "object",
+        "properties": {
+          "chapter_indices": {
+            "type": "array",
+            "items": {"type": "integer"}
+          }
+        }
+      },
+      "inference_result": {
+        "type": "object",
+        "properties": {
+          "game_type": {"type": "string", "description": "Detected sport type (basketball, football, soccer, hockey, baseball, etc.)"},
+          "venue_location": {"type": "string"},
+          "game_atmosphere": {"type": "string"},
+          "advertisements": {
+            "type": "object",
+            "properties": {
+              "advertiser_name": {"type": "string"},
+              "description": {"type": "string"}
+            }
+          }
+        }
+      },
+      "chapters": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "inference_result": {
+              "type": "object",
+              "properties": {
+                "player_actions": {
+                  "type": "object",
+                  "properties": {
+                    "player_identifier": {"type": "string", "description": "Player name or number"},
+                    "action_type": {"type": "string", "description": "Type of action performed"},
+                    "action_category": {"type": "string", "enum": ["offensive", "defensive", "neutral"]},
+                    "description": {"type": "string"}
+                  }
+                },
+                "scoring_events": {
+                  "type": "object",
+                  "properties": {
+                    "score_type": {"type": "string", "description": "goal, basket, touchdown, run, point, etc."},
+                    "scoring_player": {"type": "string"},
+                    "team": {"type": "string"},
+                    "description": {"type": "string"}
+                  }
+                },
+                "game_events": {
+                  "type": "object",
+                  "properties": {
+                    "event_type": {"type": "string", "description": "Type of game event"},
+                    "event_category": {"type": "string", "enum": ["violation", "timeout", "substitution", "period_change", "celebration", "conflict"]},
+                    "description": {"type": "string"}
+                  }
+                },
+                "violations": {
+                  "type": "object",
+                  "properties": {
+                    "violation_type": {"type": "string", "description": "foul, penalty, yellow card, red card, etc."},
+                    "player_involved": {"type": "string"},
+                    "severity": {"type": "string", "enum": ["minor", "major", "ejection"]},
+                    "description": {"type": "string"}
+                  }
+                },
+                "crowd_reactions": {
+                  "type": "object",
+                  "properties": {
+                    "reaction_type": {"type": "string", "enum": ["cheering", "booing", "standing_ovation", "wave", "chanting"]},
+                    "intensity": {"type": "string", "enum": ["low", "medium", "high"]},
+                    "description": {"type": "string"}
+                  }
+                },
+                "off_field_scenes": {
+                  "type": "object",
+                  "properties": {
+                    "scene_type": {"type": "string", "enum": ["locker_room", "bench", "sideline", "dugout", "interview", "warmup", "celebration"]},
+                    "description": {"type": "string"}
+                  }
+                }
+              }
+            },
+            "chapter_index": {"type": "integer"},
+            "start_timecode_smpte": {"type": "string"},
+            "end_timecode_smpte": {"type": "string"},
+            "start_timestamp_millis": {"type": "integer"},
+            "end_timestamp_millis": {"type": "integer"},
+            "start_frame_index": {"type": "integer"},
+            "end_frame_index": {"type": "integer"},
+            "duration_smpte": {"type": "string"},
+            "duration_millis": {"type": "integer"},
+            "duration_frames": {"type": "integer"}
+          }
+        }
+      }
+    }
+  },
+  "inferenceConfiguration": {
+    "sportDetection": {
+      "enabled": true,
+      "supportedSports": [
+        "basketball",
+        "football",
+        "soccer",
+        "hockey",
+        "baseball",
+        "tennis",
+        "volleyball",
+        "cricket",
+        "rugby"
+      ]
+    },
+    "playerActionDetection": {
+      "enabled": true,
+      "confidenceThreshold": 0.7,
+      "genericActions": [
+        "shot",
+        "pass",
+        "block",
+        "tackle",
+        "save",
+        "catch",
+        "throw",
+        "kick",
+        "dribble",
+        "run",
+        "jump",
+        "serve"
+      ]
+    },
+    "scoringDetection": {
+      "enabled": true,
+      "confidenceThreshold": 0.8,
+      "scoringTypes": [
+        "goal",
+        "basket",
+        "touchdown",
+        "field_goal",
+        "point",
+        "run",
+        "try",
+        "ace"
+      ]
+    },
+    "violationDetection": {
+      "enabled": true,
+      "confidenceThreshold": 0.75,
+      "violationTypes": [
+        "foul",
+        "penalty",
+        "yellow_card",
+        "red_card",
+        "technical_foul",
+        "offside",
+        "out_of_bounds"
+      ]
+    },
+    "gameEventDetection": {
+      "enabled": true,
+      "confidenceThreshold": 0.8,
+      "eventTypes": [
+        "timeout",
+        "substitution",
+        "period_end",
+        "halftime",
+        "overtime",
+        "celebration",
+        "injury",
+        "review",
+        "challenge"
+      ]
+    },
+    "crowdAnalysis": {
+      "enabled": true,
+      "reactionTypes": [
+        "cheering",
+        "booing",
+        "sitting",
+        "standing",
+        "waving",
+        "chanting"
+      ]
+    },
+    "sceneDetection": {
+      "enabled": true,
+      "sceneTypes": [
+        "active_play",
+        "locker_room",
+        "bench",
+        "sideline",
+        "dugout",
+        "interview",
+        "celebration",
+        "warmup",
+        "timeout",
+        "replay"
+      ]
+    },
+    "textExtraction": {
+      "enabled": true,
+      "extractScoreboard": true,
+      "extractPlayerIdentifiers": true,
+      "extractTeamNames": true,
+      "extractAdvertisements": true,
+      "extractGameClock": true
+    }
+  },
+  "processingConfiguration": {
+    "enableGPUAcceleration": true,
+    "maxProcessingTime": 3600,
+    "outputFormat": "json",
+    "compressionLevel": "medium"
+  }
+}

@@ -1,0 +1,302 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Query Interface API",
+    "description": "API for handling natural language queries about analyzed video content",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/ask-question": {
+      "post": {
+        "summary": "Ask question about video",
+        "description": "Process natural language questions about analyzed video content",
+        "operationId": "askQuestion",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "videoId": {
+                    "type": "string",
+                    "description": "Unique identifier of the video to query about"
+                  },
+                  "question": {
+                    "type": "string",
+                    "description": "Natural language question about the video content"
+                  },
+                  "context": {
+                    "type": "string",
+                    "description": "Optional additional context for the question"
+                  },
+                  "responseFormat": {
+                    "type": "string",
+                    "enum": ["detailed", "summary", "timestamps"],
+                    "default": "detailed",
+                    "description": "Preferred format for the response"
+                  }
+                },
+                "required": ["videoId", "question"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Question answered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "question": {
+                      "type": "string"
+                    },
+                    "answer": {
+                      "type": "string",
+                      "description": "Natural language answer to the question"
+                    },
+                    "confidence": {
+                      "type": "number",
+                      "description": "Confidence score for the answer (0-1)"
+                    },
+                    "relevantTimestamps": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "timestamp": {
+                            "type": "string",
+                            "description": "SMPTE timestamp"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "relevance": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "relatedPlayers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Sources of information used to answer the question"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/get-video-summary": {
+      "get": {
+        "summary": "Get video summary",
+        "description": "Retrieve a comprehensive summary of the analyzed video",
+        "operationId": "getVideoSummary",
+        "parameters": [
+          {
+            "name": "videoId",
+            "in": "query",
+            "required": true,
+            "description": "Unique identifier of the video",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "summaryType",
+            "in": "query",
+            "description": "Type of summary to generate",
+            "schema": {
+              "type": "string",
+              "enum": ["brief", "detailed", "highlights", "statistics"],
+              "default": "detailed"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Video summary retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string",
+                      "description": "Comprehensive summary of the video content"
+                    },
+                    "keyMoments": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "event": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "importance": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    },
+                    "playerStats": {
+                      "type": "object",
+                      "description": "Statistics for players mentioned in the video"
+                    },
+                    "gameContext": {
+                      "type": "object",
+                      "properties": {
+                        "sport": {
+                          "type": "string"
+                        },
+                        "teams": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "venue": {
+                          "type": "string"
+                        },
+                        "gameType": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "duration": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search-content": {
+      "post": {
+        "summary": "Search video content",
+        "description": "Search for specific content within the analyzed video",
+        "operationId": "searchContent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "videoId": {
+                    "type": "string",
+                    "description": "Unique identifier of the video to search"
+                  },
+                  "searchQuery": {
+                    "type": "string",
+                    "description": "Search query (player names, events, keywords)"
+                  },
+                  "searchType": {
+                    "type": "string",
+                    "enum": ["players", "events", "dialogue", "visual", "all"],
+                    "default": "all",
+                    "description": "Type of content to search for"
+                  },
+                  "timeRange": {
+                    "type": "object",
+                    "properties": {
+                      "start": {
+                        "type": "string",
+                        "description": "Start timestamp for search range"
+                      },
+                      "end": {
+                        "type": "string",
+                        "description": "End timestamp for search range"
+                      }
+                    }
+                  }
+                },
+                "required": ["videoId", "searchQuery"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "videoId": {
+                      "type": "string"
+                    },
+                    "searchQuery": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "timestamp": {
+                            "type": "string"
+                          },
+                          "type": {
+                            "type": "string"
+                          },
+                          "content": {
+                            "type": "string"
+                          },
+                          "relevanceScore": {
+                            "type": "number"
+                          },
+                          "context": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "totalResults": {
+                      "type": "integer"
+                    },
+                    "searchTime": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
