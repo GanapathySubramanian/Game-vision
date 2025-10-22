@@ -14,7 +14,7 @@ A Python backend that provides:
 ## 🛠️ Tech Stack
 
 - **Python 3.11+** with FastAPI
-- **AWS Bedrock** (Claude 3.5 Sonnet)
+- **AWS Bedrock** (Nova pro)
 - **AWS Lambda** for serverless processing
 - **AWS S3** for video storage
 - **Bedrock Data Automation** for video analysis
@@ -157,7 +157,7 @@ done
 
 See `bedrock-agent/agent_config.json` for configuration. Create via AWS Console:
 1. Go to **Bedrock** → **Agents** → **Create Agent**
-2. Use Claude 3.5 Sonnet model
+2. Use Claude 3.5 Sonnet model or Nova model or anything you like to use
 3. Add 3 action groups (one for each Lambda function)
 4. Use schemas from `bedrock-agent/` directory
 5. Note the Agent ID and Alias ID
@@ -240,7 +240,325 @@ GET /analysis/{video_id}
 
 Returns current analysis status and results.
 
-## 🚀 AWS Elastic Beanstalk Deployment
+## 🚀 Deployment Options
+
+You can deploy the backend using either:
+1. **Elastic Beanstalk** (Recommended) - Easiest, most reliable
+2. **ECS Fargate** (Advanced) - Containerized, requires careful network setup
+3. **AWS App Runner** (Alternative) - Simplest container deployment
+
+---
+
+## 🏢 AWS Elastic Beanstalk Deployment (Recommended)
+
+### Why Elastic Beanstalk?
+- ✅ Easiest to set up and manage
+- ✅ Built-in load balancing and auto-scaling
+- ✅ Integrated monitoring and logging
+- ✅ No complex networking configuration
+- ✅ Proven reliability
+
+### Prerequisites
+
+```bash
+# Install EB CLI
+pip install awsebcli --upgrade --user
+
+# Verify installation
+eb --version
+```
+
+### Quick Deployment (3 Steps)
+
+#### Step 1: Initialize EB Application
+
+```bash
+cd bedrock-agent/backend
+
+# Initialize EB
+eb init -p python-3.11 gameplay-analysis-backend --region us-east-1
+```
+
+#### Step 2: Create IAM Instance Profile
+
+Your EB instances need AWS permissions. Create an IAM role:
+
+```bash
+# Use the deployment script (recommended)
+cd ../infrastructure
+./deploy-to-eb.sh create-role
+
+# Or create manually (see manual setup section below)
+```
+
+#### Step 3: Create & Deploy Environment
+
+```bash
+# Create environment
+eb create gameplay-analysis-env \
+  --instance-type t3.small \
+  --instance-profile gameplay-analysis-eb-role \
+  --region us-east-1
+
+# This takes 5-10 minutes ☕
+```
+
+### Deployment Script (Easiest Method)
+
+Use the provided deployment script:
+
+```bash
+cd bedrock-agent/infrastructure
+
+# Complete deployment
+./deploy-to-eb.sh deploy
+
+# Or step by step:
+./deploy-to-eb.sh init          # Initialize EB
+./deploy-to-eb.sh create-role   # Create IAM role
+./deploy-to-eb.sh create        # Create environment
+./deploy-to-eb.sh url           # Get backend URL
+```
+
+### Update Environment Variables
+
+After deployment, set environment variables:
+
+```bash
+# Set all variables at once
+eb setenv \
+  AWS_REGION=us-east-1 \
+  AWS_BUCKET_NAME=your-bucket \
+  BEDROCK_AGENT_ID=your-agent-id \
+  BEDROCK_AGENT_ALIAS_ID=your-alias-id \
+  VIDEO_PROCESSOR_ARN=your-lambda-arn \
+  ANALYSIS_PROCESSOR_ARN=your-lambda-arn \
+  QUERY_HANDLER_ARN=your-lambda-arn
+```
+
+### Deploy Updates
+
+```bash
+# Deploy code changes
+eb deploy
+
+# View logs
+eb logs
+
+# Check status
+eb status
+```
+
+### Get Backend URL
+
+```bash
+# Via EB CLI
+eb status | grep CNAME
+
+# Or use script
+cd ../infrastructure
+./deploy-to-eb.sh url
+```
+
+You'll get: `http://gameplay-analysis-env.us-east-1.elasticbeanstalk.com`
+
+---
+
+## 🐳 AWS ECS Fargate Deployment (Advanced)
+
+### ⚠️ Important Considerations
+
+ECS Fargate deployment requires careful network configuration and can encounter AWS rate limits. **Only use this if you need containerization or have specific requirements.**
+
+### Common Issues & Solutions
+
+**Issue: Network Interface Rate Limits**
+- AWS limits network interface creation (~50-100/hour per subnet)
+- Repeated deployment failures can trigger rate limits
+- **Solution**: Wait 3-4 hours between deployment attempts
+
+**Issue: VPC Endpoint Complexity**
+- Private subnets require VPC endpoints for ECR access
+- VPC endpoints cost ~$7/month per endpoint
+- Configuration can be complex
+- **Solution**: Use NAT Gateway or public subnets with internet gateway
+
+**Issue: Health Check Failures**
+- Default health checks may be too aggressive
+- Application needs 90-120 seconds to start
+- **Solution**: Configure health check with 120s grace period
+
+### Prerequisites
+- Docker installed and running
+- AWS CLI configured
+- Understanding of VPC networking
+- `backend/.env` file configured
+
+### Network Configuration Options
+
+#### Option 1: Public Subnets + Internet Gateway (Simplest)
+- ✅ Free
+- ✅ No VPC endpoints needed
+- ⚠️ Can hit rate limits with repeated deployments
+- **Best for**: Development, testing
+
+#### Option 2: Private Subnets + NAT Gateway (Production)
+- ✅ No rate limit issues
+- ✅ More secure
+- ❌ Costs ~$32/month
+- **Best for**: Production deployments
+
+#### Option 3: Private Subnets + VPC Endpoints
+- ✅ No NAT Gateway costs
+- ❌ Complex setup
+- ❌ VPC endpoints cost ~$21/month (3 endpoints)
+- **Best for**: High-security requirements
+
+### Deployment Steps
+
+#### 1. Test Docker Image Locally First
+
+```bash
+cd bedrock-agent/backend
+
+# Build image
+docker build -t gameplay-analysis-backend:test .
+
+# Test locally with AWS credentials
+docker run -p 8000:8000 \
+  --env-file .env \
+  -e AWS_ACCESS_KEY_ID=$(aws configure get aws_access_key_id) \
+  -e AWS_SECRET_ACCESS_KEY=$(aws configure get aws_secret_access_key) \
+  gameplay-analysis-backend:test
+
+# Test health endpoint
+curl http://localhost:8000/health
+```
+
+#### 2. Deploy to ECS
+
+```bash
+cd ../infrastructure
+
+# Complete deployment
+./deploy-to-ecs.sh deploy
+```
+
+**Time:** 15-20 minutes | **Result:** Backend with public ALB URL
+
+### Deployment Commands
+
+```bash
+# Complete deployment
+./deploy-to-ecs.sh deploy
+
+# Deploy with existing image (skip build)
+./deploy-to-ecs.sh deploy-only
+
+# Update after code changes
+./deploy-to-ecs.sh update
+
+# Get backend URL
+./deploy-to-ecs.sh url
+
+# Check status
+./deploy-to-ecs.sh status
+
+# View logs
+./deploy-to-ecs.sh logs
+
+# Cleanup
+./deploy-to-ecs.sh cleanup
+```
+
+### What Gets Created
+- ECR repository for Docker images
+- ECS Fargate cluster
+- Application Load Balancer (ALB)
+- ECS service with auto-scaling
+- Security groups and IAM roles
+- (Optional) NAT Gateway or VPC endpoints
+
+### Cost Estimate
+
+**With Public Subnets:**
+- Fargate: ~$15-20/month (0.25 vCPU, 0.5GB RAM)
+- ALB: ~$16/month
+- **Total**: ~$30-35/month
+
+**With NAT Gateway:**
+- Fargate: ~$15-20/month
+- ALB: ~$16/month
+- NAT Gateway: ~$32/month
+- **Total**: ~$63-68/month
+
+### Troubleshooting ECS Deployment
+
+**Rate Limit Errors:**
+```
+Rate limit exceeded while attempting to Create Network Interface
+```
+**Solution:**
+1. Stop the ECS service: `./deploy-to-ecs.sh` → set desired-count to 0
+2. Wait 3-4 hours for rate limits to reset
+3. Try deployment again
+
+**Network Timeout Errors:**
+```
+unable to pull secrets or registry auth: connection timeout
+```
+**Solution:**
+1. Verify subnets have internet access (internet gateway or NAT gateway)
+2. Check security groups allow outbound HTTPS (port 443)
+3. Consider using VPC endpoints for ECR
+
+**Health Check Failures:**
+```
+Task failed ELB health checks
+```
+**Solution:**
+1. Increase health check grace period to 120 seconds
+2. Verify application starts within 90 seconds
+3. Check CloudWatch logs for application errors
+
+### Update Workflow
+1. Make code changes
+2. Test Docker image locally
+3. Run `./deploy-to-ecs.sh update`
+4. Monitor deployment (3-5 minutes)
+5. Verify with health check
+
+---
+
+## 🚀 AWS App Runner Deployment (Alternative)
+
+### Why App Runner?
+- ✅ Simplest container deployment
+- ✅ No VPC configuration needed
+- ✅ Auto-scaling built-in
+- ✅ No rate limit issues
+- ❌ Less control than ECS
+
+### Quick Deployment
+
+```bash
+# Build and push to ECR
+cd bedrock-agent/infrastructure
+./build-and-push.sh
+
+# Create App Runner service via AWS Console
+# 1. Go to App Runner console
+# 2. Create service from ECR
+# 3. Select your image
+# 4. Configure environment variables
+# 5. Deploy
+```
+
+**Cost:** ~$25-40/month (similar to ECS)
+
+---
+
+## 🏢 AWS Elastic Beanstalk Deployment
 
 ### Prerequisites
 

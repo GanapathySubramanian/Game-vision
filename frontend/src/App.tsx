@@ -325,51 +325,29 @@ function App() {
       setAnalysisStatus('analyzing');
       setAnalysisResult(null);
       
-      // Call backend API and wait for results (synchronous)
-      const response = await fetch(`/api/analyze-video/${videoId}`, {
+      // Call backend API to start analysis (async - returns immediately)
+      const API_BASE_URL = process.env.REACT_APP_API_URL;
+      const response = await fetch(`${API_BASE_URL}/api/analyze-video/${videoId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      console.log(response);
       
       if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to start analysis: ${response.status} ${response.statusText}`);
       }
 
       const result = await response.json();
-      console.log('Analysis completed:', result);
+      console.log('Analysis started:', result);
       
-      // Check if analysis completed successfully
-      if (result.status === 'completed' && result.results) {
-        
-        // Transform raw BDA data to frontend format
-        const validatedResults: AnalysisResult = transformBDAResults(result.results);
-
-        console.log('Transformed analysis results:', validatedResults);
-        
-        // Set results immediately - no polling needed!
-        setAnalysisResult(validatedResults);
-        setAnalysisStatus('complete');
-
-        // Update current video status
-        if (currentVideo) {
-          const updatedVideo = { 
-            ...currentVideo, 
-            status: 'completed' as const, 
-            analysisResults: validatedResults 
-          };
-          setCurrentVideo(updatedVideo);
-          setVideos(prev => prev.map(v => v.id === videoId ? updatedVideo : v));
-        }
-
-        // NOW start the chat conversation - analysis is complete and data is available
-        await startConversation(videoId);
-        console.log('Chat conversation started after analysis completion');
+      // Check if analysis started successfully
+      if (result.status === 'processing') {
+        // Start polling for results
+        console.log('Starting to poll for analysis results...');
+        await pollAnalysisResults(videoId);
       } else {
-        // Analysis failed or returned unexpected status
-        throw new Error(result.message || 'Analysis returned unexpected status');
+        throw new Error(result.message || 'Failed to start analysis');
       }
 
     } catch (error) {
@@ -387,24 +365,38 @@ function App() {
       try {
         attempts++;
         
-        const response = await fetch(`/api/analysis-status/${videoId}`);
+        const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE_URL}/api/analysis-status/${videoId}`);
         if (!response.ok) {
           throw new Error('Failed to get analysis status');
         }
 
         const statusResult = await response.json();
+        console.log(`Polling attempt ${attempts}:`, statusResult.status);
         
         if (statusResult.status === 'completed' && statusResult.results) {
+          // Transform raw BDA data to frontend format
+          const validatedResults: AnalysisResult = transformBDAResults(statusResult.results);
+          console.log('Transformed analysis results:', validatedResults);
+          
           // Analysis complete, set results
-          setAnalysisResult(statusResult.results);
+          setAnalysisResult(validatedResults);
           setAnalysisStatus('complete');
 
           // Update current video status
           if (currentVideo) {
-            const updatedVideo = { ...currentVideo, status: 'completed' as const, analysisResults: statusResult.results };
+            const updatedVideo = { 
+              ...currentVideo, 
+              status: 'completed' as const, 
+              analysisResults: validatedResults 
+            };
             setCurrentVideo(updatedVideo);
             setVideos(prev => prev.map(v => v.id === videoId ? updatedVideo : v));
           }
+          
+          // Start the chat conversation now that analysis is complete
+          await startConversation(videoId);
+          console.log('Chat conversation started after analysis completion');
           
           return;
         } else if (statusResult.status === 'processing') {
@@ -414,12 +406,19 @@ function App() {
           } else {
             // Timeout
             setAnalysisStatus('error');
+            setUploadError('Analysis timeout - please try again');
             console.error('Analysis timeout');
           }
-        } else {
-          // Error or unknown status
+        } else if (statusResult.status === 'failed') {
+          // Analysis failed
           setAnalysisStatus('error');
+          setUploadError(statusResult.message || 'Analysis failed');
           console.error('Analysis failed:', statusResult);
+        } else {
+          // Unknown status
+          setAnalysisStatus('error');
+          setUploadError('Unknown analysis status');
+          console.error('Unknown status:', statusResult);
         }
       } catch (error) {
         console.error('Polling error:', error);
@@ -427,6 +426,7 @@ function App() {
           setTimeout(poll, 10000); // Retry after 10 seconds
         } else {
           setAnalysisStatus('error');
+          setUploadError('Failed to check analysis status');
         }
       }
     };

@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+README.md
+DEPLOYMENT_QUICKSTART.md
+EB_DEPLOYMENT_GUIDE.md
+
+# Deployment artifacts
+*.zip
+backend-deployment.zip
+.elasticbeanstalk/
+.ebignore
+
+# Data and results
+bda_raw_results/
+*.json
+!bedrock-agent/*.json
+!bedrock-data-automation/*.json
+
+# Environment files (will be set in ECS)
+.env
+.env.example
+
+# Deployment scripts
+deploy-to-eb.sh
+Procfile

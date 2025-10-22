@@ -47,18 +47,21 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware - MUST be added before any routes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://*.amplifyapp.com",  # Allow all Amplify subdomains
-        "*"  # Allow all origins for now (restrict in production)
+        "https://production.d2y1j466l93f9u.amplifyapp.com",
+        "https://d15539by8ihpin.cloudfront.net",
+        "*"  # Allow all origins
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 # Configuration
@@ -160,8 +163,8 @@ async def get_video_upload_url(request: VideoUploadRequest):
 # ============================================================================
 
 @app.post("/api/video/analyze/{video_id}")
-async def analyze_video(video_id: str):
-    """Trigger video analysis using Bedrock Data Automation and wait for results."""
+async def analyze_video(video_id: str, background_tasks: BackgroundTasks):
+    """Trigger video analysis using Bedrock Data Automation in background."""
     try:
         if video_id not in video_metadata:
             raise HTTPException(status_code=404, detail="Video not found")
@@ -172,86 +175,20 @@ async def analyze_video(video_id: str):
         if not s3_uri:
             raise HTTPException(status_code=400, detail="Video S3 URI not found")
         
-        # Update status
-        video_metadata[video_id]['analysisStatus'] = 'in-progress'
+        # Update status to processing
+        video_metadata[video_id]['analysisStatus'] = 'processing'
         video_metadata[video_id]['analysisStartedAt'] = datetime.utcnow().isoformat()
         
-        logger.info(f"Starting synchronous analysis for video {video_id}")
+        # Start analysis in background
+        background_tasks.add_task(process_video_analysis_sync, video_id, s3_uri)
         
-        # Process video analysis synchronously (wait for results)
-        start_time = datetime.utcnow()
+        logger.info(f"Started background analysis for video {video_id}")
         
-        try:
-            bda_results = await invoke_data_automation_and_get_results(s3_uri)
-            
-            # Write raw BDA results to file for debugging/inspection
-            # bda_raw_file = f'bda_raw_results/{video_id}_raw_bda_output.json'
-            # os.makedirs('bda_raw_results', exist_ok=True)
-            # with open(bda_raw_file, 'w') as f:
-            #     json.dump(bda_results, f, indent=2)
-            # logger.info(f"Wrote raw BDA results to {bda_raw_file}")
-            
-            end_time = datetime.utcnow()
-            processing_duration = (end_time - start_time).total_seconds()
-            
-            # Process the results (aws_helpers already processes them)
-            results = bda_results["customOutput"]
-            
-            if results:
-                # Write processed results to file for debugging/inspection
-                processed_file = f'bda_raw_results/{video_id}_processed_results.json'
-                # with open(processed_file, 'w') as f:
-                #     json.dump(results, f, indent=2)
-                # logger.info(f"Wrote processed results to {processed_file}")
-                
-                # Store results in S3
-                s3_client = get_s3_client()
-                bucket_name = get_bucket_name()
-                
-                analysis_key = f'analysis/{video_id}/results.json'
-                s3_client.put_object(
-                    Bucket=bucket_name,
-                    Key=analysis_key,
-                    Body=json.dumps(results, indent=2),
-                    ContentType='application/json'
-                )
-                
-                # Update metadata
-                video_metadata[video_id].update({
-                    'analysisStatus': 'completed',
-                    'analysisCompletedAt': end_time.isoformat(),
-                    'processingDuration': processing_duration
-                })
-                
-                logger.info(f"Completed analysis for video {video_id} in {processing_duration:.2f}s")
-                
-                return {
-                    "videoId": video_id,
-                    "status": "completed",
-                    "results": results,
-                    "metadata": {
-                        "analysisTime": end_time.isoformat(),
-                        "processingDuration": processing_duration,
-                        "videoFileName": metadata.get('fileName')
-                    },
-                    "message": f"Analysis completed in {processing_duration:.1f} seconds"
-                }
-            else:
-                video_metadata[video_id].update({
-                    'analysisStatus': 'failed',
-                    'analysisCompletedAt': end_time.isoformat(),
-                    'errorMessage': 'Analysis returned no results'
-                })
-                raise HTTPException(status_code=500, detail="Analysis returned no results")
-                
-        except Exception as analysis_error:
-            logger.error(f"Analysis failed for video {video_id}: {analysis_error}")
-            video_metadata[video_id].update({
-                'analysisStatus': 'failed',
-                'analysisCompletedAt': datetime.utcnow().isoformat(),
-                'errorMessage': str(analysis_error)
-            })
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {str(analysis_error)}")
+        return {
+            "videoId": video_id,
+            "status": "processing",
+            "message": "Analysis started in background. Use /api/analysis-status/{video_id} to check progress."
+        }
         
     except HTTPException:
         raise
@@ -261,13 +198,75 @@ async def analyze_video(video_id: str):
 
 
 # ============================================================================
+# ANALYSIS STATUS ENDPOINT
+# ============================================================================
+
+@app.get("/api/analysis-status/{video_id}")
+async def get_analysis_status(video_id: str):
+    """Get the status of video analysis and results if completed."""
+    try:
+        if video_id not in video_metadata:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        metadata = video_metadata[video_id]
+        analysis_status = metadata.get('analysisStatus', 'pending')
+        
+        response = {
+            "videoId": video_id,
+            "status": analysis_status,
+            "fileName": metadata.get('fileName'),
+            "uploadTime": metadata.get('uploadTime')
+        }
+        
+        if analysis_status == 'processing':
+            response['message'] = 'Analysis in progress...'
+            if 'analysisStartedAt' in metadata:
+                response['startedAt'] = metadata['analysisStartedAt']
+        
+        elif analysis_status == 'completed':
+            # Fetch results from S3
+            try:
+                s3_client = get_s3_client()
+                bucket_name = get_bucket_name()
+                
+                analysis_key = f'analysis/{video_id}/results.json'
+                s3_response = s3_client.get_object(Bucket=bucket_name, Key=analysis_key)
+                results = json.loads(s3_response['Body'].read().decode('utf-8'))
+                
+                response['results'] = results
+                response['completedAt'] = metadata.get('analysisCompletedAt')
+                response['processingDuration'] = metadata.get('processingDuration')
+                response['message'] = 'Analysis completed successfully'
+                
+            except s3_client.exceptions.NoSuchKey:
+                logger.error(f"Results file not found for completed analysis: {video_id}")
+                response['status'] = 'failed'
+                response['message'] = 'Analysis results not found'
+        
+        elif analysis_status == 'failed':
+            response['message'] = metadata.get('errorMessage', 'Analysis failed')
+            response['completedAt'] = metadata.get('analysisCompletedAt')
+        
+        else:  # pending
+            response['message'] = 'Analysis not started yet'
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get analysis status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
 # COMPATIBILITY ENDPOINTS (for old frontend)
 # ============================================================================
 
 @app.post("/api/analyze-video/{video_id}")
-async def analyze_video_compat(video_id: str):
+async def analyze_video_compat(video_id: str, background_tasks: BackgroundTasks):
     """Compatibility endpoint for old frontend URL."""
-    return await analyze_video(video_id)
+    return await analyze_video(video_id, background_tasks)
 
 # ============================================================================
 # BEDROCK AGENT ENDPOINTS
@@ -452,53 +451,64 @@ async def ask_question(request: dict):
 # BACKGROUND TASKS
 # ============================================================================
 
-async def process_video_analysis(video_id: str, s3_uri: str):
-    """Background task to process video analysis."""
-    try:
-        logger.info(f"Starting analysis for video {video_id}")
-        
-        start_time = datetime.utcnow()
-        results = await invoke_data_automation_and_get_results(s3_uri)
-        end_time = datetime.utcnow()
-        
-        processing_duration = (end_time - start_time).total_seconds()
-        
-        if results:
-            # Store results in S3
-            s3_client = get_s3_client()
-            bucket_name = get_bucket_name()
+def process_video_analysis_sync(video_id: str, s3_uri: str):
+    """Synchronous background task to process video analysis."""
+    import asyncio
+    
+    async def _process():
+        try:
+            logger.info(f"Starting analysis for video {video_id}")
             
-            analysis_key = f'analysis/{video_id}/results.json'
-            s3_client.put_object(
-                Bucket=bucket_name,
-                Key=analysis_key,
-                Body=json.dumps(results, indent=2),
-                ContentType='application/json'
-            )
+            start_time = datetime.utcnow()
+            raw_results = await invoke_data_automation_and_get_results(s3_uri)
+            end_time = datetime.utcnow()
             
-            # Update metadata
-            video_metadata[video_id].update({
-                'analysisStatus': 'completed',
-                'analysisCompletedAt': end_time.isoformat(),
-                'processingDuration': processing_duration
-            })
+            processing_duration = (end_time - start_time).total_seconds()
             
-            logger.info(f"Completed analysis for video {video_id} in {processing_duration:.2f}s")
-        else:
+            if raw_results:
+                # Extract customOutput - this is what frontend expects
+                # raw_results has format: {standardOutput: {...}, customOutput: {...}}
+                # We only store customOutput which has the processed game data
+                results_to_store = raw_results.get('customOutput', raw_results)
+                
+                # Store results in S3
+                s3_client = get_s3_client()
+                bucket_name = get_bucket_name()
+                
+                analysis_key = f'analysis/{video_id}/results.json'
+                s3_client.put_object(
+                    Bucket=bucket_name,
+                    Key=analysis_key,
+                    Body=json.dumps(results_to_store, indent=2),
+                    ContentType='application/json'
+                )
+                
+                # Update metadata
+                video_metadata[video_id].update({
+                    'analysisStatus': 'completed',
+                    'analysisCompletedAt': end_time.isoformat(),
+                    'processingDuration': processing_duration
+                })
+                
+                logger.info(f"Completed analysis for video {video_id} in {processing_duration:.2f}s")
+            else:
+                video_metadata[video_id].update({
+                    'analysisStatus': 'failed',
+                    'analysisCompletedAt': end_time.isoformat(),
+                    'errorMessage': 'Analysis returned no results'
+                })
+                logger.error(f"Analysis failed for video {video_id}: No results")
+            
+        except Exception as e:
+            logger.error(f"Failed to process video analysis: {e}")
             video_metadata[video_id].update({
                 'analysisStatus': 'failed',
-                'analysisCompletedAt': end_time.isoformat(),
-                'errorMessage': 'Analysis returned no results'
+                'analysisCompletedAt': datetime.utcnow().isoformat(),
+                'errorMessage': str(e)
             })
-            logger.error(f"Analysis failed for video {video_id}: No results")
-        
-    except Exception as e:
-        logger.error(f"Failed to process video analysis: {e}")
-        video_metadata[video_id].update({
-            'analysisStatus': 'failed',
-            'analysisCompletedAt': datetime.utcnow().isoformat(),
-            'errorMessage': str(e)
-        })
+    
+    # Run the async function in a new event loop
+    asyncio.run(_process())
 
 # ============================================================================
 # MAIN

@@ -11,10 +11,10 @@ AI-powered video gameplay analysis platform using AWS Bedrock Agent and Data Aut
 ## 🎯 Overview
 
 A complete web application that enables users to:
-- **Upload gameplay videos** via intuitive chat interface
+- **Upload gameplay videos** via intuitive ui
 - **Automatically analyze** videos using AWS Bedrock Data Automation
 - **Ask questions** about gameplay in natural language
-- **Get AI insights** powered by Claude 3.5 Sonnet
+- **Get AI insights** powered by Nova pro
 
 ## 🏗️ Architecture
 
@@ -126,7 +126,7 @@ npm start
 
 ### Backend
 - Python 3.11+ with FastAPI
-- AWS Bedrock Agent (Claude 3.5 Sonnet)
+- AWS Bedrock Agent (Nova Pro)
 - AWS Lambda (serverless functions)
 - AWS S3 (video storage)
 - Elastic Beanstalk (hosting)
@@ -134,7 +134,7 @@ npm start
 ### AI/ML
 - AWS Bedrock Data Automation
 - Custom sports analysis blueprint
-- Claude 3.5 Sonnet model
+- Nova Pro model
 
 ## 📁 Project Structure
 
@@ -306,7 +306,7 @@ See individual README files for detailed troubleshooting guides.
 
 ## 🎯 Workflow
 
-1. **User uploads video** via chat interface
+1. **User uploads video** via ui
 2. **Frontend** gets presigned S3 URL from backend
 3. **Video uploaded** directly to S3
 4. **Lambda function** triggered on S3 upload
